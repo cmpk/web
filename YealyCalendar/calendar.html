@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <script>
+    const FISCAL_START_DATE='2020/04/01'; // 表示したい年度の最初の日
+    const START_WEEKDAY = 0; // 週初めとする曜日。0:日曜日 〜 6:土曜日
+    const OFF_WEEKDAYS = [0, 6]; // 常に非営業日とする曜日
+    const OFFICE_DAYS_OFF = [ // オフィスの非営業日（フォーマット：YYYY/MM/DD）
+      '2020/12/07'
+    ];
+  </script>
+  <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+  <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.0/css/bootstrap.min.css" integrity="sha384-9aIt2nRpC12Uk9gS9baDl411NQApFmC26EwAOH8WgZl5MYYxFfc+NcPb1dKGj7Sk" crossorigin="anonymous">
+  <style>
+    .office-day-off { /* 非営業日 */
+      background-color: #fdd;
+    }
+    .day-off { /* 休日／祝日 */
+      background-color: #eee;
+    }
+  </style>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, minimal-ui">
+</head>
+<body>
+<div  class="container">
+  <h1>年度カレンダー</h1>
+  <div id="calendar" class="row">
+    <div class="card col-4">
+      <div class="card-body">
+        <h2 class="card-title">月</h2>
+        <div class="card-text">
+          <table class="table table-bordered">
+            <thead><tr><th>曜日</th></tr></thead>
+            <tbody><tr><td>日付</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="legend">
+    <div>
+      <span class="day-off"></span>：休日／祝日<br />
+      <span class="office-day-off"></span>：非営業日<br />
+    </div>
+  </div>
+</div>
+<script>
+$(document).ready(function(){
+  let startDateObj = new Date(FISCAL_START_DATE);
+  var endDateObj = new Date();
+  endDateObj.setFullYear(startDateObj.getFullYear() + 1, startDateObj.getMonth(), startDateObj.getDate());
+  let holidays = getHolidays(startDateObj);
+  let officeDaysOff = getOfficeDaysOff();
+
+  // display the target fiscal year
+  $('h1').html(startDateObj.getFullYear() + $('h1').html());
+
+  // determine the first date of the first calendar
+  var targetMonth = startDateObj.getMonth();
+  var targetDateObj = new Date(startDateObj.getFullYear(), startDateObj.getMonth(), startDateObj.getDate());
+  while (targetDateObj.getDay() != START_WEEKDAY) {
+    targetDateObj.setDate(targetDateObj.getDate() - 1);
+  }
+
+  // create calendar
+  let $format = $($('#calendar').find('.card')[0]);
+  let $monthlyFormat = createMonthFormat($format);
+  $format.remove();
+
+  var $monthlyElm = createMonthElm($monthlyFormat, targetDateObj);
+  var $weeklyParent = $($monthlyElm.find('tbody')[0]);
+  var $weeklyFormat = $($weeklyParent.find('tr')[0]);
+  var $weeklyElm = $weeklyFormat.clone(false);
+  var $dayFormat = $($weeklyElm.find('td')[0]);
+
+  while (targetDateObj < endDateObj || targetDateObj.getDay() !== START_WEEKDAY) {
+    let $dayElm = $dayFormat.clone(false);
+    $dayElm.html(targetDateObj.getDate());
+    $weeklyElm.append($dayElm);
+
+    // set style
+    if (targetDateObj.getMonth() !== targetMonth) {
+      $dayElm.addClass('out-date');
+    }
+    if ($.inArray(targetDateObj.getDay(), OFF_WEEKDAYS) > -1) {
+      $dayElm.addClass('day-off');
+    }
+    if ($.inArray(Math.floor(targetDateObj.getTime()/1000), holidays) > -1) {
+      $dayElm.addClass('day-off');
+    }
+    if ($.inArray(Math.floor(targetDateObj.getTime()), officeDaysOff) > -1) {
+      $dayElm.addClass('office-day-off');
+    }
+
+    // go on to the next date
+    targetDateObj.setDate(targetDateObj.getDate() + 1);
+    if (targetDateObj.getDay() === START_WEEKDAY) {
+      $dayFormat.remove();
+      $weeklyParent.append($weeklyElm);
+      
+      if (targetDateObj.getMonth() === targetMonth) {
+        $weeklyElm = $weeklyFormat.clone(false);
+        $dayFormat = $($weeklyElm.find('td')[0]);
+      } else {
+        // create next month's calendar
+        $weeklyFormat.remove();
+        $('#calendar').append($monthlyElm);
+
+        // determine the first date of the first calendar
+        targetMonth = targetDateObj.getMonth();
+        if (targetDateObj.getDate() !== 1) {
+          targetDateObj.setDate(targetDateObj.getDate() - 7);
+        }
+
+        // create calendar
+        $monthlyElm = createMonthElm($monthlyFormat, targetDateObj);
+        $weeklyParent = $($monthlyElm.find('tbody')[0]);
+        $weeklyFormat = $($weeklyParent.find('tr')[0]);
+        $weeklyElm = $weeklyFormat.clone(false);
+        $dayFormat = $($weeklyElm.find('td')[0]);
+      }
+    }
+  }
+});
+
+function getHolidays(targetDateObj) {
+  var json = {};
+  targetYear = targetDateObj.getFullYear();
+
+  $.ajaxSetup({async: false}); // wait until finish getting data
+  $.each([targetYear, targetYear + 1], function(i, year) {
+      $.getJSON(`https://holidays-jp.github.io/api/v1/${year}/datetime.json`, function( data ) {
+        $.extend( json, data );
+    });
+  });
+
+  var array = [];
+  $.each(json, function(key, valye) {
+    array.push(parseInt(key));
+  });
+
+  return array;
+}
+
+function getOfficeDaysOff() {
+  var array = [];
+  $.each(OFFICE_DAYS_OFF, function(i, str) {
+    let d = new Date(str);
+    array.push(parseInt(d.getTime()));
+  });
+  return array;
+}
+
+const DISPLAYED_WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'];
+function createMonthFormat($format) {
+  let $monthlyFormat = $format.clone(false);
+
+  // create table header
+  let $headerParent = $($monthlyFormat.find('thead > tr')[0]);
+  let $headerFormat = $($headerParent.find('th')[0]);
+  for (let i = START_WEEKDAY; i < START_WEEKDAY + 7; i++) {
+    let $headerDateElm = $headerFormat.clone(false);
+    $headerDateElm.html(DISPLAYED_WEEKDAYS[i % 7]);
+    $headerParent.append($headerDateElm);
+  }
+  $headerFormat.remove();
+
+  return $monthlyFormat;
+}
+
+function createMonthElm($monthlyFormat, $startDateObjObj) {
+  let $monthlyElm = $monthlyFormat.clone(false);
+
+  // set title
+  var targetMonth = 0;
+  if ($startDateObjObj.getDate() === 1) {
+    targetMonth = $startDateObjObj.getMonth() + 1;
+  } else {
+    targetMonth = $startDateObjObj.getMonth() + 2;
+  }
+  if (targetMonth > 12) {
+    targetMonth -= 12;
+  }
+  $titleElm = $($monthlyElm.find('.card-title')[0]);
+  $titleElm.html(targetMonth + $titleElm.html());
+
+  return $monthlyElm;
+}
+</script>
+<style>
+html {
+  font-size: small;
+}
+h1, h2, table {
+  text-align: center;
+}
+.out-date {
+  color: #ccc;
+  background-color: #fff;
+}
+.legend {
+  margin-top: 10px;
+}
+.legend div {
+  width: 120px;
+  padding: 10px;
+  margin-left: auto;
+  border: 1px solid #ddd;
+}
+.legend span {
+  display: inline-block;
+  width: 15px;
+  height: 15px;
+  border: 1px solid #ddd;
+}
+</style>
+</body>
+</html>
